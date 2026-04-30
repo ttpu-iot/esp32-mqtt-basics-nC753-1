@@ -1,24 +1,7 @@
-// - RED LED - `D26`
-// - Green LED - `D27`
-// - Blue LED - `D14`
-// - Yellow LED - `D12`
-
-// - Button (Active high) - `D25`
-// - Light sensor (analog) - `D33`
-
-// - LCD I2C - SDA: `D21`
-// - LCD I2C - SCL: `D22`
-
-/**************************************
- * LAB 3 - EXERCISE 2
- **************************************/
-
-
 #include "Arduino.h"
 #include "WiFi.h"
 #include <ArduinoJson.h>
 #include "PubSubClient.h"
-#include <time.h>
 
 #define RED_LED 26
 #define GREEN_LED 27
@@ -31,6 +14,8 @@ const char* mqtt_broker = "mqtt.iotserver.uz";
 const int mqtt_port = 1883;
 const char* mqtt_username = "userTTPU";
 const char* mqtt_password = "mqttpass";
+
+// Switched back to kamronbek
 const char* topic_red = "ttpu/iot/kamronbek/led/red";
 const char* topic_green = "ttpu/iot/kamronbek/led/green";
 const char* topic_blue = "ttpu/iot/kamronbek/led/blue";
@@ -41,26 +26,23 @@ PubSubClient mqtt_client(espClient);
 
 void connectWiFi();
 void connectMQTT();
+void checkWiFiConnection();
+void checkMQTTConnection();
 void MQTT_callback(char* topic, byte* payload, unsigned int length); 
 
-// Your code here - global declarations
-
-/*************************
- * SETUP
- */
-void setup()
-{
+void setup() {
   Serial.begin(115200);
-  setupPinMode(RED_LED, OUTPUT);
-  setupPinMode(GREEN_LED, OUTPUT);
-  setupPinMode(BLUE_LED, OUTPUT);
-  setupPinMode(YELLOW_LED, OUTPUT);
-  // Your code here
+  pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(BLUE_LED, OUTPUT);
+  pinMode(YELLOW_LED, OUTPUT);
+  delay(1000);
 
-  digitalWrite(RED_LED, HIGH);
-  digitalWrite(GREEN_LED, HIGH);
-  digitalWrite(BLUE_LED, HIGH);
-  digitalWrite(YELLOW_LED, HIGH);
+  // Requirement: Set all LEDs to LOW initially
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(GREEN_LED, LOW);
+  digitalWrite(BLUE_LED, LOW);
+  digitalWrite(YELLOW_LED, LOW);
 
   connectWiFi();
 
@@ -70,11 +52,108 @@ void setup()
   connectMQTT();
 }
 
+void loop() {
+  checkWiFiConnection();
+  checkMQTTConnection();
+  mqtt_client.loop();
+}
+  
+void MQTT_callback(char* topic, byte* payload, unsigned int length) {
+  // Requirement: Print every received message
+  Serial.print("\n[MQTT] Received on ");
+  Serial.print(topic);
+  Serial.print(": ");
+  Serial.write(payload, length);
+  Serial.println();
 
-/*************************
- * LOOP
- */
-void loop() 
-{
-mqtt_client.loop();  // Your code here
+  JsonDocument doc;
+  
+  // Requirement: Handle malformed JSON gracefully
+  DeserializationError error = deserializeJson(doc, payload, length);
+  if (error) {
+    Serial.print("Failed to parse JSON. Error: ");
+    Serial.println(error.c_str());
+    return; 
+  }
+
+  String state = doc["state"];
+  bool on = (state == "ON"); 
+
+  if (strcmp(topic, topic_red) == 0) {
+    digitalWrite(RED_LED, on);
+    Serial.println("[LED] Red LED -> " + state);
+  }
+  else if (strcmp(topic, topic_green) == 0) {
+    digitalWrite(GREEN_LED, on);
+    Serial.println("[LED] Green LED -> " + state);
+  }
+  else if (strcmp(topic, topic_blue) == 0) {
+    digitalWrite(BLUE_LED, on);
+    Serial.println("[LED] Blue LED -> " + state);
+  }
+  else if (strcmp(topic, topic_yellow) == 0) {
+    digitalWrite(YELLOW_LED, on);
+    Serial.println("[LED] Yellow LED -> " + state);
+  }
+}
+
+void checkWiFiConnection() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connection lost. Reconnecting...");
+    connectWiFi();
+  }
+}
+
+void checkMQTTConnection() {
+  if (!mqtt_client.connected()) {
+    Serial.println("MQTT connection lost. Reconnecting...");
+    connectMQTT();
+  }
+}
+
+void connectWiFi() {
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.print("\nConnected! IP Address: ");
+  Serial.println(WiFi.localIP()); 
+}
+
+void connectMQTT() {
+  while (!mqtt_client.connected()) {
+    Serial.println("Connecting to MQTT...");
+    
+    if (mqtt_client.connect("ESP32Client_Kamronbek", mqtt_username, mqtt_password)) {
+      Serial.println("Connected to MQTT broker!");
+      
+      // Subscribe to RED and print it
+      mqtt_client.subscribe(topic_red);
+      Serial.print("Subscribed to topic: ");
+      Serial.println(topic_red);
+      
+      // Subscribe to GREEN and print it
+      mqtt_client.subscribe(topic_green);
+      Serial.print("Subscribed to topic: ");
+      Serial.println(topic_green);
+      
+      // Subscribe to BLUE and print it
+      mqtt_client.subscribe(topic_blue);
+      Serial.print("Subscribed to topic: ");
+      Serial.println(topic_blue);
+      
+      // Subscribe to YELLOW and print it
+      mqtt_client.subscribe(topic_yellow);
+      Serial.print("Subscribed to topic: ");
+      Serial.println(topic_yellow);
+      
+    } else {
+      Serial.print("Failed to connect to MQTT. State: ");
+      Serial.print(mqtt_client.state());
+      Serial.println(". Retrying in 5 seconds...");
+      delay(5000);
+    }
+  }
 }
